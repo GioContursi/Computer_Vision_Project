@@ -1,3 +1,6 @@
+import argparse
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -7,73 +10,101 @@ from autoencoder import ConvAutoencoder
 from data import DentalImageDataset
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train convolutional autoencoder.")
+
+    parser.add_argument("--image-dir", type=str, default="data/perio_KPT/0_Baseline/images")
+    parser.add_argument("--image-size", type=int, default=128)
+    parser.add_argument("--max-images", type=int, default=64)
+
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=1e-4)
+
+    parser.add_argument("--checkpoint-path", type=str, default="checkpoints/autoencoder_debug.pth")
+    parser.add_argument("--output-dir", type=str, default="outputs/reconstructions")
+
+    return parser.parse_args()
+
+
 def denormalize(x):
     return (x + 1) / 2
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+def main():
+    args = parse_args()
 
-image_dir = "data/perio_KPT/0_Baseline/images"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-dataset = DentalImageDataset(
-    image_dir=image_dir,
-    image_size=128,
-    max_images=193
-)
+    Path(args.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-loader = DataLoader(
-    dataset,
-    batch_size=8,
-    shuffle=True
-)
+    dataset = DentalImageDataset(
+        image_dir=args.image_dir,
+        image_size=args.image_size,
+        max_images=args.max_images
+    )
 
-model = ConvAutoencoder().to(device)
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True
+    )
 
-criterion = nn.L1Loss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    model = ConvAutoencoder().to(device)
 
-epochs = 20
+    criterion = nn.L1Loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-for epoch in range(epochs):
-    model.train()
-    total_loss = 0
+    print("Device:", device)
+    print("Dataset size:", len(dataset))
+    print("Epochs:", args.epochs)
+    print("Batch size:", args.batch_size)
 
-    for images in loader:
-        images = images.to(device)
+    for epoch in range(args.epochs):
+        model.train()
+        total_loss = 0
 
-        reconstructions, latents = model(images)
-        loss = criterion(reconstructions, images)
+        for images in loader:
+            images = images.to(device)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            reconstructions, _ = model(images)
+            loss = criterion(reconstructions, images)
 
-        total_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-    avg_loss = total_loss / len(loader)
+            total_loss += loss.item()
 
-    print(f"Epoch [{epoch + 1}/{epochs}] - Loss: {avg_loss:.4f}")
+        avg_loss = total_loss / len(loader)
 
-    model.eval()
-    with torch.no_grad():
-        images = next(iter(loader)).to(device)
-        reconstructions, _ = model(images)
+        print(f"Epoch [{epoch + 1}/{args.epochs}] - Loss: {avg_loss:.4f}")
 
-        comparison = torch.cat([
-            denormalize(images.cpu()),
-            denormalize(reconstructions.cpu())
-        ], dim=0)
+        model.eval()
+        with torch.no_grad():
+            images = next(iter(loader)).to(device)
+            reconstructions, _ = model(images)
 
-        save_image(
-            comparison,
-            f"outputs/reconstructions/epoch_{epoch + 1}.png",
-            nrow=8
-        )
+            comparison = torch.cat([
+                denormalize(images.cpu()),
+                denormalize(reconstructions.cpu())
+            ], dim=0)
 
-torch.save(
-    model.state_dict(),
-    "checkpoints/autoencoder_debug.pth"
-)
+            save_image(
+                comparison,
+                f"{args.output_dir}/epoch_{epoch + 1}.png",
+                nrow=args.batch_size
+            )
 
-print("Training completed.")
-print("Checkpoint saved in checkpoints/autoencoder_debug.pth")
+    torch.save(
+        model.state_dict(),
+        args.checkpoint_path
+    )
+
+    print("Training completed.")
+    print(f"Checkpoint saved in {args.checkpoint_path}")
+
+
+if __name__ == "__main__":
+    main()

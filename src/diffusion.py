@@ -26,3 +26,24 @@ class DiffusionScheduler:
         sqrt_one_minus_alpha_bar_t = torch.sqrt(1.0 - alpha_bar_t).view(-1, 1, 1, 1)
         z_noisy = sqrt_alpha_bar_t * z_start + sqrt_one_minus_alpha_bar_t * noise
         return z_noisy, noise
+    
+    def p_sample(self, z_t, t, predicted_noise):
+        beta_t = self.betas[t]
+        alpha_t = self.alphas[t]
+        alpha_bar_t = self.alpha_bars[t]
+
+        beta_t = beta_t.view(-1, 1, 1, 1)
+        alpha_t = alpha_t.view(-1, 1, 1, 1)
+        alpha_bar_t = alpha_bar_t.view(-1, 1, 1, 1)
+
+        mean = (1.0 / torch.sqrt(alpha_t)) * (
+            z_t - ((1.0 - alpha_t) / torch.sqrt(1.0 - alpha_bar_t)) * predicted_noise
+        )
+
+        noise = torch.randn_like(z_t)
+
+        mask = (t > 0).float().view(-1, 1, 1, 1)
+
+        z_prev = mean + mask * torch.sqrt(beta_t) * noise
+
+        return z_prev
