@@ -14,9 +14,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Sample images from baseline LDM.")
 
     parser.add_argument("--num-samples", type=int, default=8)
-    parser.add_argument("--latent-channels", type=int, default=4)
+    parser.add_argument("--latent-channels", type=int, default=8)
     parser.add_argument("--latent-size", type=int, default=16)
-
+    parser.add_argument("--latent-scale", type=float, default=5.0)
     parser.add_argument("--timesteps", type=int, default=1000)
 
     parser.add_argument("--autoencoder-checkpoint", type=str, default="checkpoints/autoencoder_debug.pth")
@@ -53,8 +53,8 @@ def main():
     autoencoder.eval()
 
     unet = LatentUNet(
-        latent_channels=args.latent_channels,
-        base_channels=64,
+        latent_channels=8,
+        base_channels=96,
         time_dim=128
     ).to(device)
 
@@ -87,7 +87,7 @@ def main():
             predicted_noise = unet(z, t)
             z = scheduler.p_sample(z, t, predicted_noise)
 
-        generated_images = autoencoder.decode(z)
+        generated_images = autoencoder.decode(z / args.latent_scale)
 
     save_image(
         denormalize(generated_images.cpu()),

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class ConvAutoencoder(nn.Module):
-    def __init__(self, in_channels=1, latent_channels=4):
+    def __init__(self, in_channels=1, latent_channels=8):
         super().__init__()
 
         self.encoder = nn.Sequential(

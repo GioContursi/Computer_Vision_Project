@@ -13,24 +13,47 @@ import torchvision.transforms.functional as TF
 # 1. DATASET BASE (Solo immagini, utile per pre-training iniziale Autoencoder)
 # =========================================================================
 class DentalImageDataset(Dataset):
-    def __init__(self, image_dir, image_size=128, max_images=None):
-        self.image_dir = Path(image_dir)
+    def __init__(self, image_dir, image_size=128, max_images=None, augment=False):
+        if isinstance(image_dir, str):
+            image_dirs = [image_dir]
+        else:
+            image_dirs = image_dir
 
-        self.image_paths = sorted(
-            list(self.image_dir.glob("*.png"))
-            + list(self.image_dir.glob("*.jpg"))
-            + list(self.image_dir.glob("*.jpeg"))
-        )
+        self.image_paths = []
+
+        for directory in image_dirs:
+            directory = Path(directory)
+            self.image_paths.extend(
+                list(directory.rglob("*.png"))
+                + list(directory.rglob("*.jpg"))
+                + list(directory.rglob("*.jpeg"))
+                + list(directory.rglob("*.PNG"))
+                + list(directory.rglob("*.JPG"))
+                + list(directory.rglob("*.JPEG"))
+            )
+
+        self.image_paths = sorted(self.image_paths)
 
         if max_images is not None:
             self.image_paths = self.image_paths[:max_images]
 
-        self.transform = transforms.Compose([
+        transform_list = [
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize((image_size, image_size)),
+        ]
+
+        if augment:
+            transform_list.extend([
+                transforms.RandomRotation(degrees=5),
+                transforms.ColorJitter(brightness=0.10, contrast=0.10),
+            ])
+
+        transform_list.extend([
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5])
+            transforms.Normalize(mean=[0.5], std=[0.5]),
         ])
+
+        self.transform = transforms.Compose(transform_list)
 
     def __len__(self):
         return len(self.image_paths)

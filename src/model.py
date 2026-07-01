@@ -60,7 +60,7 @@ class ResBlock(nn.Module):
     
 
 class LatentUNet(nn.Module):
-    def __init__(self, latent_channels=4, base_channels=64, time_dim = 128):
+    def __init__(self, latent_channels=8, base_channels=96, time_dim = 128):
         super().__init__()
 
         self.time_embedding = TimeEmbedding(time_dim)
