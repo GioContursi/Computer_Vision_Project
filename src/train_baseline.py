@@ -10,6 +10,8 @@ from data import DentalImageDataset
 from diffusion import DiffusionScheduler
 from model import LatentUNet
 
+import time
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train baseline latent diffusion model.")
@@ -30,6 +32,8 @@ def parse_args():
     parser.add_argument("--latent-scale", type=float, default=5.0)
     parser.add_argument("--save-every", type=int, default=50)
     parser.add_argument("--log-path", type=str, default="outputs/logs/ldm_loss.csv")
+
+    parser.add_argument("--resume-unet-checkpoint", type=str, default=None)
 
     return parser.parse_args()
 
@@ -56,6 +60,9 @@ def main():
         dataset,
         batch_size=args.batch_size,
         shuffle=True,
+        num_workers=8,
+        pin_memory=True,
+        persistent_workers=True if args.epochs > 1 else False
     )
 
     autoencoder = ConvAutoencoder().to(device)
@@ -73,6 +80,10 @@ def main():
         time_dim=128,
     ).to(device)
 
+    if args.resume_unet_checkpoint is not None:
+        unet.load_state_dict(torch.load(args.resume_unet_checkpoint, map_location=device))
+        print(f"Resumed UNet from {args.resume_unet_checkpoint}")
+
     scheduler = DiffusionScheduler(
         timesteps=args.timesteps,
         device=device,
@@ -89,6 +100,7 @@ def main():
     print("Latent scale:", args.latent_scale)
 
     for epoch in range(args.epochs):
+        start_time = time.time()
         unet.train()
         total_loss = 0
 
@@ -120,7 +132,8 @@ def main():
 
         avg_loss = total_loss / len(loader)
 
-        print(f"Epoch [{epoch + 1}/{args.epochs}] - Loss: {avg_loss:.4f}")
+        epoch_time = time.time() - start_time
+        print(f"Epoch [{epoch + 1}/{args.epochs}] - Loss: {avg_loss:.4f} - Time: {epoch_time:.2f}s")        
 
         with open(args.log_path, "a") as f:
             f.write(f"{epoch + 1},{avg_loss}\n")
