@@ -12,6 +12,7 @@ outputs/*
 !outputs/logs/
 outputs/logs/*
 !outputs/logs/autoencoder_8ch_512_loss.csv
+!outputs/logs/ldm_8ch_512_loss.csv
 
 !outputs/reconstructions_8ch_512_best/
 outputs/reconstructions_8ch_512_best/*
