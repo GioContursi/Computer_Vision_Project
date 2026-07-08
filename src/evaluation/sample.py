@@ -62,9 +62,9 @@ def main():
     autoencoder.eval()
 
     unet = LatentUNet(
-        latent_channels=LATENT_CHANNELS_BASELINE,
-        base_channels=BASE_CHANNELS_BASELINE,
-        time_dim=TIME_DIM
+    latent_channels=args.latent_channels,
+    base_channels=BASE_CHANNELS_BASELINE,
+    time_dim=TIME_DIM
     ).to(device)
 
     unet.load_state_dict(
