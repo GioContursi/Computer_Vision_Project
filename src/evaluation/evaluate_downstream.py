@@ -21,7 +21,7 @@ Due task di valutazione:
    a) solo dati reali
    b) reali + sintetici baseline
    c) reali + sintetici condizionati
-   Confronta accuracy/F1.
+   Confronta accuracy/F1/mAP.
 
 Uso
 ---
@@ -55,20 +55,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from tqdm import tqdm
+from sklearn.metrics import average_precision_score  # NUOVO IMPORT PER LA mAP
 
-from autoencoder import ConvAutoencoder
+from network.autoencoder import ConvAutoencoder
 from data import PerioKPTDataset, collate_fn
-from diffusion import DiffusionScheduler
-from model import LatentUNet
-from anatomy import (
+from network.diffusion import DiffusionScheduler
+from network.model import LatentUNet
+from network.anatomy import (
     AnatomyCondition,
     AnatomyEncoder,
     ConditioningStrength,
     collate_to_anatomy,
     IN_CH_COND,
-    LATENT_CH,
     COND_CHANNELS,
 )
+
 from utils import calculate_psnr, get_ssim_metric
 from globals import (
     DEVICE, TIMESTEPS, BASE_CHANNELS_COND, BASE_CHANNELS_BASELINE,
@@ -110,7 +111,7 @@ def sample_conditional(
     anat_enc: AnatomyEncoder,
     anatomy_maps: torch.Tensor,   # (B, 2, 16, 16)
     device: torch.device,
-    latent_channels: int = LATENT_CH,
+    latent_channels: int = 8,     # AGGIORNATO A 8
     latent_size: int = 16,
 ) -> torch.Tensor:
     """Reverse diffusion condizionato → immagini decodificate (B,1,128,128)."""
@@ -135,7 +136,7 @@ def sample_baseline(
     ae: ConvAutoencoder,
     B: int,
     device: torch.device,
-    latent_channels: int = LATENT_CH,
+    latent_channels: int = 8,    # AGGIORNATO A 8
     latent_size: int = 16,
 ) -> torch.Tensor:
     """Reverse diffusion non condizionato → (B,1,128,128)."""
@@ -153,7 +154,7 @@ def sample_baseline(
 # ---------------------------------------------------------------------------
 
 def load_ae(path: str, device: torch.device) -> ConvAutoencoder:
-    ae = ConvAutoencoder(in_channels=1, latent_channels=LATENT_CH).to(device)
+    ae = ConvAutoencoder(in_channels=1, latent_channels=8).to(device) # AGGIORNATO A 8
     if Path(path).exists():
         ae.load_state_dict(torch.load(path, map_location=device))
     else:
@@ -171,7 +172,7 @@ def load_conditional_ldm(ckpt_path: str, device: torch.device
                       base_channels=saved_args.get('base_channels', BASE_CHANNELS_COND),
                       time_dim=saved_args.get('time_dim', 128)).to(device)
     unet.output_conv = nn.Conv2d(
-        saved_args.get('base_channels', BASE_CHANNELS_COND), LATENT_CH, 3, padding=1).to(device)
+        saved_args.get('base_channels', BASE_CHANNELS_COND), 8, 3, padding=1).to(device) # AGGIORNATO A 8
     unet.load_state_dict(ckpt['unet_state'])
     unet.eval()
 
@@ -183,7 +184,7 @@ def load_conditional_ldm(ckpt_path: str, device: torch.device
 
 def load_baseline_ldm(ckpt_path: str, device: torch.device) -> LatentUNet:
     # NB: il modello baseline è addestrato con LATENT_CHANNELS_BASELINE/BASE_CHANNELS_BASELINE
-    # (vedi train_baseline.py), non con i valori "conditional" (LATENT_CH/64).
+    # (vedi train_baseline.py), non con i valori "conditional".
     unet = LatentUNet(latent_channels=LATENT_CHANNELS_BASELINE,
                       base_channels=BASE_CHANNELS_BASELINE, time_dim=TIME_DIM).to(device)
     unet.load_state_dict(torch.load(ckpt_path, map_location=device))
@@ -284,21 +285,40 @@ def _train_eval_classifier(train_imgs, train_labels, val_imgs, val_labels,
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     ld = DataLoader(TensorDataset(train_imgs, train_labels),
                     batch_size=batch_size, shuffle=True)
+    
+    # Training Loop
     for _ in range(epochs):
         model.train()
         for imgs, lbls in ld:
             loss = F.cross_entropy(model(imgs.to(device)), lbls.to(device))
-            opt.zero_grad(); loss.backward(); opt.step()
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            
+    # Evaluation Loop con mAP
     model.eval()
     with torch.no_grad():
-        preds = model(val_imgs.to(device)).argmax(1).cpu().numpy()
+        logits = model(val_imgs.to(device))
+        # Estraiamo le probabilità per la classe positiva (1) per la mAP
+        probs = F.softmax(logits, dim=1)[:, 1].cpu().numpy()
+        preds = logits.argmax(1).cpu().numpy()
+        
     lbls_np = val_labels.numpy()
+    
     acc = (preds == lbls_np).mean()
     tp = ((preds==1)&(lbls_np==1)).sum()
     fp = ((preds==1)&(lbls_np==0)).sum()
     fn = ((preds==0)&(lbls_np==1)).sum()
     f1 = 2*tp / (2*tp + fp + fn + 1e-8)
-    return {'accuracy': float(acc), 'f1': float(f1)}
+    
+    # Calcolo effettivo della Mean Average Precision
+    # Se per caso c'è una sola classe nel validation set (raro ma possibile), gestiamo l'eccezione
+    try:
+        map_score = average_precision_score(lbls_np, probs)
+    except ValueError:
+        map_score = 0.0
+
+    return {'accuracy': float(acc), 'f1': float(f1), 'mAP': float(map_score)}
 
 
 def run_downstream(args: argparse.Namespace) -> None:
@@ -310,6 +330,7 @@ def run_downstream(args: argparse.Namespace) -> None:
     base_unet = load_baseline_ldm(args.baseline_checkpoint, device)
     scheduler = DiffusionScheduler(timesteps=TIMESTEPS, device=device)
 
+    # Assicurati che target_classes sia allineato con quello che hai impostato per l'addestramento!
     ds = PerioKPTDataset(args.data_dir, split='train',
                          box_type=args.box_type, fold=args.fold)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False,
@@ -361,12 +382,16 @@ def run_downstream(args: argparse.Namespace) -> None:
     for name, (tr_imgs, tr_lbl) in configs.items():
         print(f"\nClassificatore: {name}  ({len(tr_imgs)} campioni)")
         results[name] = _train_eval_classifier(
-            tr_imgs, tr_lbl, val_imgs, val_lbl, device)
-        print(f"  Accuracy={results[name]['accuracy']:.4f}  F1={results[name]['f1']:.4f}")
+            tr_imgs, tr_lbl, val_imgs, val_lbl, device, epochs=args.clf_epochs)
+        
+        # ORA STAMPIAMO ANCHE LA mAP
+        print(f"  Accuracy={results[name]['accuracy']:.4f}  F1={results[name]['f1']:.4f}  mAP={results[name]['mAP']:.4f}")
 
     with open(out_dir / 'downstream_results.json', 'w') as f:
         json.dump(results, f, indent=2)
-    _print_table(results, title="DOWNSTREAM TASK", cols=['accuracy', 'f1'])
+        
+    # AGGIUNTA mAP ALLE COLONNE DELLA TABELLA
+    _print_table(results, title="DOWNSTREAM TASK", cols=['accuracy', 'f1', 'mAP'])
     print(f"\nRisultati salvati in {out_dir / 'downstream_results.json'}")
 
 

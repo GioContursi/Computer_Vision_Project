@@ -2,33 +2,6 @@
 train_conditional.py
 --------------------
 Addestra il Latent Diffusion Model condizionato anatomicamente.
-
-Architettura
-------------
-    image (1,128,128)
-        ↓ ConvAutoencoder.encode  [frozen]
-    latente z (4,16,16)
-        ↓ concat su dim=1
-    z_cond (6,16,16)  ← anatomy_map (2,16,16) da AnatomyCondition
-        ↓ LatentUNet(latent_channels=6)
-    predicted noise (4,16,16)
-
-La UNet condizionale usa latent_channels=6 in input ma predice
-il rumore solo sui 4 canali latenti originali → loss su (B,4,16,16).
-
-Uso
----
-    cd src
-    python train_conditional.py \
-        --data-dir ../data/perio_KPT/1_Experiment \
-        --box-type standard_box \
-        --fold 0 \
-        --ae-checkpoint ../checkpoints/autoencoder.pth \
-        --output-dir ../checkpoints \
-        --cond-weight 1.0 \
-        --epochs 50
-
-Ablation: --cond-weight 0.0 replica il baseline non condizionato.
 """
 
 from __future__ import annotations
@@ -42,11 +15,12 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from autoencoder import ConvAutoencoder
+# IMPORT CORRETTI CON 'network.'
+from network.autoencoder import ConvAutoencoder
 from data import PerioKPTDataset, collate_fn
-from diffusion import DiffusionScheduler
-from model import LatentUNet
-from anatomy import (
+from network.diffusion import DiffusionScheduler
+from network.model import LatentUNet
+from network.anatomy import (
     AnatomyCondition,
     AnatomyEncoder,
     ConditioningStrength,
@@ -59,7 +33,6 @@ from globals import (
     EPOCHS, LR_CONDITIONAL, SAVE_EVERY, AE_CHECKPOINT, CHECKPOINT_DIR,
     DATA_DIR_EXPERIMENT,
 )
-
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -111,11 +84,11 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Dataset ──────────────────────────────────────────────────────────
+    # ── Dataset (CON FILTRO PER CLASSI RARE) ─────────────────────────────
     train_ds = PerioKPTDataset(args.data_dir, split='train',
-                               box_type=args.box_type, fold=args.fold)
+                               box_type=args.box_type, fold=args.fold, target_classes=[3])
     val_ds   = PerioKPTDataset(args.data_dir, split='test',
-                               box_type=args.box_type, fold=args.fold)
+                               box_type=args.box_type, fold=args.fold, target_classes=[3])
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size,
                               shuffle=True,  num_workers=args.num_workers,
@@ -146,14 +119,12 @@ def main():
         p.requires_grad_(False)
 
     # ── UNet condizionale ─────────────────────────────────────────────────
-    # In input riceve z_noisy (4 ch) + anatomy (2 ch) = 6 canali
     unet = LatentUNet(
-        latent_channels=IN_CH_COND,   # 6
+        latent_channels=IN_CH_COND,  
         base_channels=args.base_channels,
         time_dim=args.time_dim,
     ).to(device)
-    # L'output della UNet ha latent_channels canali, ma noi vogliamo 4.
-    # Sovrascriviamo solo l'ultimo layer di output.
+    
     unet.output_conv = nn.Conv2d(args.base_channels, args.latent_channels,
                                  kernel_size=3, padding=1).to(device)
 
@@ -177,23 +148,17 @@ def main():
                                         leave=False):
             images = images.to(device)
 
-            # Anatomy map (B, 2, 16, 16)
             anat = collate_to_anatomy(annotations, anatomy_cond, cond_strength, device)
             anat = anat_enc(anat)
 
-            # Latente pulito
             with torch.no_grad():
-                z = ae.encode(images)                  # (B, 4, 16, 16)
+                z = ae.encode(images)                  
 
-            # Forward diffusion
             t = torch.randint(0, scheduler.timesteps, (z.shape[0],), device=device)
-            z_noisy, noise = scheduler.q_sample(z, t)  # (B, 4, 16, 16)
+            z_noisy, noise = scheduler.q_sample(z, t)  
 
-            # Concatenazione canali
-            z_cond = torch.cat([z_noisy, anat], dim=1) # (B, 6, 16, 16)
-
-            # Predizione rumore
-            pred_noise = unet(z_cond, t)               # (B, 4, 16, 16)
+            z_cond = torch.cat([z_noisy, anat], dim=1) 
+            pred_noise = unet(z_cond, t)               
 
             loss = criterion(pred_noise, noise)
             optimizer.zero_grad()
