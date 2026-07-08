@@ -70,6 +70,10 @@ from anatomy import (
     COND_CHANNELS,
 )
 from utils import calculate_psnr, get_ssim_metric
+from globals import (
+    DEVICE, TIMESTEPS, BASE_CHANNELS_COND, BASE_CHANNELS_BASELINE,
+    LATENT_CHANNELS_BASELINE, TIME_DIM, RESULTS_DIR,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +168,10 @@ def load_conditional_ldm(ckpt_path: str, device: torch.device
     ckpt = torch.load(ckpt_path, map_location=device)
     saved_args = ckpt.get('args', {})
     unet = LatentUNet(latent_channels=IN_CH_COND,
-                      base_channels=saved_args.get('base_channels', 64),
+                      base_channels=saved_args.get('base_channels', BASE_CHANNELS_COND),
                       time_dim=saved_args.get('time_dim', 128)).to(device)
     unet.output_conv = nn.Conv2d(
-        saved_args.get('base_channels', 64), LATENT_CH, 3, padding=1).to(device)
+        saved_args.get('base_channels', BASE_CHANNELS_COND), LATENT_CH, 3, padding=1).to(device)
     unet.load_state_dict(ckpt['unet_state'])
     unet.eval()
 
@@ -178,7 +182,10 @@ def load_conditional_ldm(ckpt_path: str, device: torch.device
 
 
 def load_baseline_ldm(ckpt_path: str, device: torch.device) -> LatentUNet:
-    unet = LatentUNet(latent_channels=LATENT_CH, base_channels=64, time_dim=128).to(device)
+    # NB: il modello baseline è addestrato con LATENT_CHANNELS_BASELINE/BASE_CHANNELS_BASELINE
+    # (vedi train_baseline.py), non con i valori "conditional" (LATENT_CH/64).
+    unet = LatentUNet(latent_channels=LATENT_CHANNELS_BASELINE,
+                      base_channels=BASE_CHANNELS_BASELINE, time_dim=TIME_DIM).to(device)
     unet.load_state_dict(torch.load(ckpt_path, map_location=device))
     unet.eval()
     return unet
@@ -207,12 +214,12 @@ def _apply_channel_mask(anat: torch.Tensor, active: List[int] | None) -> torch.T
 
 
 def run_ablation(args: argparse.Namespace) -> None:
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = DEVICE
     out_dir = Path(args.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
 
     ae = load_ae(args.ae_checkpoint, device)
     unet, anat_enc = load_conditional_ldm(args.cond_checkpoint, device)
-    scheduler = DiffusionScheduler(timesteps=1000, device=device)
+    scheduler = DiffusionScheduler(timesteps=TIMESTEPS, device=device)
 
     ds = PerioKPTDataset(args.data_dir, split='test',
                          box_type=args.box_type, fold=args.fold)
@@ -295,13 +302,13 @@ def _train_eval_classifier(train_imgs, train_labels, val_imgs, val_labels,
 
 
 def run_downstream(args: argparse.Namespace) -> None:
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = DEVICE
     out_dir = Path(args.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
 
     ae = load_ae(args.ae_checkpoint, device)
     cond_unet, anat_enc = load_conditional_ldm(args.cond_checkpoint, device)
     base_unet = load_baseline_ldm(args.baseline_checkpoint, device)
-    scheduler = DiffusionScheduler(timesteps=1000, device=device)
+    scheduler = DiffusionScheduler(timesteps=TIMESTEPS, device=device)
 
     ds = PerioKPTDataset(args.data_dir, split='train',
                          box_type=args.box_type, fold=args.fold)
@@ -390,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     shared.add_argument('--box-type',      type=str, default='standard_box')
     shared.add_argument('--fold',          type=int, default=0)
     shared.add_argument('--ae-checkpoint', type=str, required=True)
-    shared.add_argument('--output-dir',    type=str, default='../results')
+    shared.add_argument('--output-dir',    type=str, default=RESULTS_DIR)
     shared.add_argument('--batch-size',    type=int, default=8)
 
     abl = sub.add_parser('ablation',   parents=[shared])

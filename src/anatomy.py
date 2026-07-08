@@ -33,13 +33,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-# ---------------------------------------------------------------------------
-# Costanti
-# ---------------------------------------------------------------------------
-COND_CHANNELS = 2   # canale 0: box mask  |  canale 1: keypoint heatmap
-LATENT_CH     = 4   # canali latenti di ConvAutoencoder
-IN_CH_COND    = LATENT_CH + COND_CHANNELS   # = 6, input del conditional UNet
+from globals import (
+    COND_CHANNELS,
+    LATENT_CHANNELS_COND as LATENT_CH,   # alias per compatibilità col resto del file
+    IN_CH_COND,
+    IMAGE_SIZE,
+    LATENT_SIZE,
+    KPT_SIGMA,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -100,9 +101,9 @@ class AnatomyCondition:
 
     def __init__(
         self,
-        image_size:  tuple = (128, 128),
-        latent_size: tuple = (16, 16),
-        kpt_sigma:   float = 3.0,
+        image_size:  tuple = (IMAGE_SIZE, IMAGE_SIZE),
+        latent_size: tuple = (LATENT_SIZE, LATENT_SIZE),
+        kpt_sigma:   float = KPT_SIGMA,
     ):
         self.image_size  = image_size
         self.latent_size = latent_size

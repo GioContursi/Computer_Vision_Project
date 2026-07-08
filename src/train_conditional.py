@@ -53,6 +53,12 @@ from anatomy import (
     collate_to_anatomy,
     IN_CH_COND,
 )
+from globals import (
+    DEVICE, IMAGE_SIZE, LATENT_SIZE, BATCH_SIZE, LATENT_CHANNELS_COND,
+    BASE_CHANNELS_COND, TIME_DIM, TIMESTEPS, COND_WEIGHT_DEFAULT, KPT_SIGMA,
+    EPOCHS, LR_CONDITIONAL, SAVE_EVERY, AE_CHECKPOINT, CHECKPOINT_DIR,
+    DATA_DIR_EXPERIMENT,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,32 +69,32 @@ def parse_args():
     p = argparse.ArgumentParser(description="Train conditional LDM.")
 
     # Dati
-    p.add_argument("--data-dir",    type=str, default="../data/perio_KPT/1_Experiment")
+    p.add_argument("--data-dir",    type=str, default=DATA_DIR_EXPERIMENT)
     p.add_argument("--box-type",    type=str, default="standard_box",
                    choices=["standard_box", "rotating_box"])
     p.add_argument("--fold",        type=int, default=0)
-    p.add_argument("--batch-size",  type=int, default=16)
+    p.add_argument("--batch-size",  type=int, default=BATCH_SIZE)
     p.add_argument("--num-workers", type=int, default=0)
 
     # Modello
-    p.add_argument("--latent-channels", type=int, default=4)
-    p.add_argument("--base-channels",   type=int, default=64)
-    p.add_argument("--time-dim",        type=int, default=128)
-    p.add_argument("--timesteps",       type=int, default=1000)
+    p.add_argument("--latent-channels", type=int, default=LATENT_CHANNELS_COND)
+    p.add_argument("--base-channels",   type=int, default=BASE_CHANNELS_COND)
+    p.add_argument("--time-dim",        type=int, default=TIME_DIM)
+    p.add_argument("--timesteps",       type=int, default=TIMESTEPS)
 
     # Condizionamento
-    p.add_argument("--cond-weight", type=float, default=1.0,
+    p.add_argument("--cond-weight", type=float, default=COND_WEIGHT_DEFAULT,
                    help="Forza del condizionamento in [0,1]. 0=baseline non condizionato.")
-    p.add_argument("--kpt-sigma",   type=float, default=3.0)
+    p.add_argument("--kpt-sigma",   type=float, default=KPT_SIGMA)
 
     # Training
-    p.add_argument("--epochs",        type=int,   default=50)
-    p.add_argument("--lr",            type=float, default=1e-4)
-    p.add_argument("--save-every",    type=int,   default=10)
+    p.add_argument("--epochs",        type=int,   default=EPOCHS)
+    p.add_argument("--lr",            type=float, default=LR_CONDITIONAL)
+    p.add_argument("--save-every",    type=int,   default=SAVE_EVERY)
 
     # Checkpoint
-    p.add_argument("--ae-checkpoint",   type=str, default="../checkpoints/autoencoder.pth")
-    p.add_argument("--output-dir",      type=str, default="../checkpoints")
+    p.add_argument("--ae-checkpoint",   type=str, default=f"../{AE_CHECKPOINT}")
+    p.add_argument("--output-dir",      type=str, default=f"../{CHECKPOINT_DIR}")
 
     return p.parse_args()
 
@@ -99,7 +105,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = DEVICE
     print(f"Device: {device}")
 
     out_dir = Path(args.output_dir)
@@ -121,7 +127,8 @@ def main():
     print(f"Train: {len(train_ds)} campioni | Val: {len(val_ds)} campioni")
 
     # ── Anatomy ──────────────────────────────────────────────────────────
-    anatomy_cond = AnatomyCondition(image_size=(128, 128), latent_size=(16, 16),
+    anatomy_cond = AnatomyCondition(image_size=(IMAGE_SIZE, IMAGE_SIZE),
+                                    latent_size=(LATENT_SIZE, LATENT_SIZE),
                                     kpt_sigma=args.kpt_sigma)
     cond_strength = ConditioningStrength(weight=args.cond_weight)
     anat_enc = AnatomyEncoder(in_channels=2, out_channels=2).to(device)

@@ -8,23 +8,28 @@ from torchvision.utils import save_image
 
 from autoencoder import ConvAutoencoder
 from data import DentalImageDataset
+from globals import (
+    DEVICE, IMAGE_SIZE, BATCH_SIZE, LR_AUTOENCODER, SAVE_EVERY,
+    LATENT_CHANNELS_BASELINE, DATA_DIR_BASELINE, AE_CHECKPOINT,
+    OUTPUT_DIR, LOG_DIR,
+)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train convolutional autoencoder.")
 
-    parser.add_argument("--image-dir", type=str, nargs="+", default=["data/perio_KPT/0_Baseline/images"])
-    parser.add_argument("--image-size", type=int, default=128)
+    parser.add_argument("--image-dir", type=str, nargs="+", default=[DATA_DIR_BASELINE])
+    parser.add_argument("--image-size", type=int, default=IMAGE_SIZE)
     parser.add_argument("--max-images", type=int, default=None)
     parser.add_argument("--augment", action="store_true")
-    parser.add_argument("--log-path", type=str, default="outputs/logs/autoencoder_loss.csv")
-    parser.add_argument("--save-every", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--log-path", type=str, default=f"{LOG_DIR}/autoencoder_loss.csv")
+    parser.add_argument("--save-every", type=int, default=SAVE_EVERY)
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=LR_AUTOENCODER)
 
-    parser.add_argument("--checkpoint-path", type=str, default="checkpoints/autoencoder_debug.pth")
-    parser.add_argument("--output-dir", type=str, default="outputs/reconstructions")
+    parser.add_argument("--checkpoint-path", type=str, default=AE_CHECKPOINT)
+    parser.add_argument("--output-dir", type=str, default=f"{OUTPUT_DIR}/reconstructions")
 
     return parser.parse_args()
 
@@ -36,7 +41,7 @@ def denormalize(x):
 def main():
     args = parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = DEVICE
 
     Path(args.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
@@ -57,7 +62,7 @@ def main():
         shuffle=True
     )
 
-    model = ConvAutoencoder().to(device)
+    model = ConvAutoencoder(latent_channels=LATENT_CHANNELS_BASELINE).to(device)
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
