@@ -51,10 +51,14 @@ def main():
         args.latent_size
     )
 
-    autoencoder = ConvAutoencoder().to(device)
+    autoencoder = ConvAutoencoder(
+    latent_channels=args.latent_channels
+    ).to(device)
+
     autoencoder.load_state_dict(
-        torch.load(args.autoencoder_checkpoint, map_location=device)
+    torch.load(args.autoencoder_checkpoint, map_location=device)
     )
+
     autoencoder.eval()
 
     unet = LatentUNet(

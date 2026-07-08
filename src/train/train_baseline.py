@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from autoencoder import ConvAutoencoder
+from network.autoencoder import ConvAutoencoder
 from data import DentalImageDataset
-from diffusion import DiffusionScheduler
-from model import LatentUNet
+from network.diffusion import DiffusionScheduler
+from network.model import LatentUNet
 from globals import (
     DEVICE, IMAGE_SIZE, BATCH_SIZE, LR_BASELINE, TIMESTEPS, LATENT_SCALE,
     SAVE_EVERY, BASE_CHANNELS_BASELINE, TIME_DIM, LATENT_CHANNELS_BASELINE,
