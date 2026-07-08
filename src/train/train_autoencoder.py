@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
-from autoencoder import ConvAutoencoder
+from network.autoencoder import ConvAutoencoder
 from data import DentalImageDataset
 from globals import (
     DEVICE, IMAGE_SIZE, BATCH_SIZE, LR_AUTOENCODER, SAVE_EVERY,
