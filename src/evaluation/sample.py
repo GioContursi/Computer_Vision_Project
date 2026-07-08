@@ -5,9 +5,9 @@ import torch
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from autoencoder import ConvAutoencoder
-from diffusion import DiffusionScheduler
-from model import LatentUNet
+from network.autoencoder import ConvAutoencoder
+from network.diffusion import DiffusionScheduler
+from network.model import LatentUNet
 from globals import (
     DEVICE, LATENT_CHANNELS_BASELINE, LATENT_SIZE, LATENT_SCALE, TIMESTEPS,
     BASE_CHANNELS_BASELINE, TIME_DIM, AE_CHECKPOINT, BASELINE_UNET_CHECKPOINT,
