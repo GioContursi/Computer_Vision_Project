@@ -3,7 +3,22 @@
 *.zip
 **/__pycache__/
 **/*.pyc
-outputs/
+
+outputs/*
+!outputs/generated_8ch_128_best.png
+!outputs/generated_epoch400_64.png
+!outputs/generated_final_64.png
+
+!outputs/logs/
+!outputs/logs/autoencoder_8ch_512_loss.csv
+
+!outputs/reconstructions_8ch_512_best/
+!outputs/reconstructions_8ch_512_best/epoch_1.png
+!outputs/reconstructions_8ch_512_best/epoch_50.png
+!outputs/reconstructions_8ch_512_best/epoch_100.png
+!outputs/reconstructions_8ch_512_best/epoch_150.png
+!outputs/reconstructions_8ch_512_best/epoch_200.png
+!outputs/reconstructions_8ch_512_best/epoch_250.png
 
 checkpoints/*.pth
 
